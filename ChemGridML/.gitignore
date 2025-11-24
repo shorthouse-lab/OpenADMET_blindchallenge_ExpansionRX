@@ -1,0 +1,55 @@
+# MacOS
+.DS_Store
+
+# Latex
+*.aux
+*.bbl
+*.blg
+*.log
+*.nav
+*.out
+*.snm
+*.toc
+*.vrb
+*.run.xml
+*.bcf
+*.synctex.gz
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+*.pkl
+*.pt
+*.ckpt
+
+# Temporary experiment outputs (large files)
+output/
+studies/
+test_results/
+.cache/
+feature_cache/
+nohup.out
+*.log
+
+# Large data files (commit reports and plots, but not raw databases)
+*.db
+*.db-shm
+*.db-wal
+
+# Keep important results
+!openadmet_results/reports/*.csv
+!openadmet_results/plots/**/*.png
+
+# IDE
+.vscode/
+.idea/
+
+# Personal files
+TODO.txt
+daily_log.txt
+research.txt
+
+# OS
+.DS_Store
+Thumbs.db

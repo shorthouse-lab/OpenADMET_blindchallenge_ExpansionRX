@@ -1,0 +1,47 @@
+# FNN (Neural Network) Run: Single Descriptor (ECFP)
+# This file temporarily repurposed to run only FNN on ECFP for all targets.
+# To run other descriptors sequentially:
+#   1) Replace the single entry under `features:` with the next fingerprint name.
+#   2) Keep models as ["FNN"].
+#   3) Adjust experiment.name if you want a separate DB per descriptor.
+# Reverting to baseline: restore original features/models list from version control history.
+
+data:
+  train_csv: "../ExpansionRX_train.csv"
+  test_csv: "../ExpansionRX_test.csv"
+  smiles_column: "SMILES"
+
+# Test all high-coverage targets
+targets:
+  - "KSOL"           # 96.3% coverage - Kinetic solubility
+  - "LogD"           # 94.6% coverage - Distribution coefficient
+  - "MLM CLint"      # 84.9% coverage - Mouse liver microsomal clearance
+  - "HLM CLint"      # 70.6% coverage - Human liver microsomal clearance
+
+# Single descriptor for this FNN run
+features:
+  - "ECFP"       # Extended Connectivity Fingerprints (Morgan)
+
+# Start with fastest model
+models:
+  - "FNN"
+
+experiment:
+  name: "OpenADMET_FNN_ECFP"  # New DB name to avoid overwriting baselines
+  n_tests: 5         # Reduced for quicker FNN iteration (adjust as needed)
+  n_folds: 5         # 5-fold CV
+  n_trials: 10       # Fewer HPO trials for initial pass
+  test_size: 0.2
+  
+output:
+  results_dir: "openadmet_results"
+  save_predictions: true
+  save_models: false
+  
+visualization:
+  create_plots: true
+  plot_types:
+    - "performance_comparison"
+    - "prediction_scatter"
+  figure_format: "png"
+  dpi: 300

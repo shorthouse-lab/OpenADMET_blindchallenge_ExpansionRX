@@ -1,0 +1,49 @@
+# Comprehensive Benchmark - Phase 5: Remaining Targets
+# Run all models on all fingerprints for the 5 remaining target properties
+
+data:
+  train_csv: "../ExpansionRX_train.csv"
+  test_csv: "../ExpansionRX_test.csv"
+  smiles_column: "SMILES"
+
+# The 5 remaining targets (not yet analyzed)
+targets:
+  - "Caco-2 Permeability Papp A>B"
+  - "Caco-2 Permeability Efflux"
+  - "MPPB"
+  - "MBPB"
+  - "MGMB"
+
+features:
+  - "ECFP"
+  - "AtomPair"
+  - "MACCS"
+  - "RDKitFP"
+  - "TOPOTOR"
+  - "MOL2VEC"
+
+models:
+  - "ElasticNet"
+  - "KNN"
+  - "XGBoost"
+  - "FNN"
+
+experiment:
+  name: "OpenADMET_Phase5_RemainingTargets"
+  n_tests: 5       # Use 5 seeds to match your existing experiments
+  n_folds: 5
+  n_trials: 15
+  test_size: 0.2
+  
+output:
+  results_dir: "openadmet_results"
+  save_predictions: true
+  save_models: false
+  
+visualization:
+  create_plots: true
+  plot_types:
+    - "performance_comparison"
+    - "prediction_scatter"
+  figure_format: "png"
+  dpi: 300

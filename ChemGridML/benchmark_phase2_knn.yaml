@@ -1,0 +1,47 @@
+# Benchmark - Phase 2: KNN
+# Tests all molecular descriptors with k-Nearest Neighbors
+
+data:
+  train_csv: "../ExpansionRX_train.csv"
+  test_csv: "../ExpansionRX_test.csv"
+  smiles_column: "SMILES"
+
+# Test all high-coverage targets
+targets:
+  - "KSOL"           # 96.3% coverage - Kinetic solubility
+  - "LogD"           # 94.6% coverage - Distribution coefficient
+  - "MLM CLint"      # 84.9% coverage - Mouse liver microsomal clearance
+  - "HLM CLint"      # 70.6% coverage - Human liver microsomal clearance
+
+# Test all traditional molecular descriptors (fingerprints)
+features:
+  - "ECFP"       # Extended Connectivity Fingerprints (Morgan)
+  - "AtomPair"   # Atom pair fingerprints
+  - "MACCS"      # MACCS keys (166 bits)
+  - "RDKitFP"    # RDKit fingerprints
+  - "TOPOTOR"    # Topological torsion fingerprints
+  - "MOL2VEC"    # Mol2Vec embeddings
+
+# KNN model
+models:
+  - "KNN"
+
+experiment:
+  name: "OpenADMET_Phase2_KNN"
+  n_tests: 10        # Full 10 splits for robust statistics
+  n_folds: 5         # 5-fold CV
+  n_trials: 15       # 15 hyperparameter trials
+  test_size: 0.2
+  
+output:
+  results_dir: "openadmet_results"
+  save_predictions: true
+  save_models: false
+  
+visualization:
+  create_plots: true
+  plot_types:
+    - "performance_comparison"
+    - "prediction_scatter"
+  figure_format: "png"
+  dpi: 300

@@ -1,0 +1,47 @@
+================================================================================
+OpenADMET Benchmark - Results Summary
+================================================================================
+
+Overall Statistics:
+  Total combinations tested: 24
+  Features: AtomPair, ECFP, MACCS, MOL2VEC, RDKitFP, TOPOTOR
+  Models: KNN
+  Targets: HLM CLint, KSOL, LogD, MLM CLint
+
+Best Performing Methods by Target:
+--------------------------------------------------------------------------------
+
+HLM CLint:
+  1. RDKitFP      + KNN          | R² = 0.278 ± 0.075 | RMSE = 111.825 ± 20.131
+  2. AtomPair     + KNN          | R² = 0.258 ± 0.095 | RMSE = 113.237 ± 20.209
+  3. ECFP         + KNN          | R² = 0.214 ± 0.078 | RMSE = 116.435 ± 19.036
+
+KSOL:
+  1. AtomPair     + KNN          | R² = 0.514 ± 0.015 | RMSE = 80.187 ± 1.345
+  2. ECFP         + KNN          | R² = 0.484 ± 0.021 | RMSE = 82.677 ± 1.584
+  3. MOL2VEC      + KNN          | R² = 0.473 ± 0.021 | RMSE = 83.529 ± 1.867
+
+LogD:
+  1. MOL2VEC      + KNN          | R² = 0.746 ± 0.017 | RMSE = 0.597 ± 0.029
+  2. AtomPair     + KNN          | R² = 0.713 ± 0.018 | RMSE = 0.635 ± 0.030
+  3. MACCS        + KNN          | R² = 0.675 ± 0.022 | RMSE = 0.675 ± 0.031
+
+MLM CLint:
+  1. AtomPair     + KNN          | R² = 0.357 ± 0.057 | RMSE = 797.064 ± 59.572
+  2. RDKitFP      + KNN          | R² = 0.344 ± 0.051 | RMSE = 806.484 ± 75.190
+  3. TOPOTOR      + KNN          | R² = 0.337 ± 0.027 | RMSE = 810.574 ± 66.411
+
+--------------------------------------------------------------------------------
+
+Best Features (Average R² across all targets):
+  AtomPair     : 0.461
+  MOL2VEC      : 0.440
+  RDKitFP      : 0.430
+  ECFP         : 0.421
+  TOPOTOR      : 0.414
+  MACCS        : 0.363
+
+Best Models (Average R² across all targets):
+  KNN          : 0.422
+
+================================================================================
