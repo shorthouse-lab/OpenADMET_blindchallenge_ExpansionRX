@@ -1,19 +1,24 @@
+import time
 import numpy as np
 from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem
 from rdkit.ML.Cluster import Butina
 from sklearn.model_selection import GroupKFold, GroupShuffleSplit
+import env
 
 def gen_butina_clusters(smiles_list, cutoff=0.6, fp_radius=2, fp_bits=1024):
     """
     Generates Butina clusters for a list of SMILES.
     Returns an array of integer group IDs.
     """
+    start_time = time.time()
     mols = [Chem.MolFromSmiles(s) for s in smiles_list]
     fps = [AllChem.GetMorganFingerprintAsBitVect(x, fp_radius, nBits=fp_bits)
            for x in mols if x is not None]
 
     if not fps:
+        if env.VERBOSE:
+            env.logger.info(f"[Split] Butina clustering skipped: 0 valid fingerprints out of {len(smiles_list)} SMILES")
         return np.arange(len(smiles_list))
 
     # Calculate distance matrix (1 - Similarity)
@@ -35,13 +40,33 @@ def gen_butina_clusters(smiles_list, cutoff=0.6, fp_radius=2, fp_bits=1024):
             original_idx = valid_indices[member_idx]
             group_ids[original_idx] = cluster_id
 
+    elapsed = time.time() - start_time
+    n_valid = len(valid_indices)
+    n_invalid = len(smiles_list) - n_valid
+    n_clusters = len(clusters)
+    n_groups = len(np.unique(group_ids))
+    if env.VERBOSE:
+        env.logger.info(
+            f"[Split] Butina clusters built in {elapsed:.2f}s "
+            f"(cutoff={cutoff}, valid={n_valid}, invalid={n_invalid}, "
+            f"clusters={n_clusters}, groups={n_groups})"
+        )
+
     return group_ids
 
 def butina_train_test_split(X, Y, smiles, test_size=0.2, random_state=42, cutoff=0.6):
     """Helper for the outer split (runs once per experiment)"""
+    split_start = time.time()
     groups = gen_butina_clusters(smiles, cutoff=cutoff)
     gss = GroupShuffleSplit(n_splits=1, test_size=test_size, random_state=random_state)
     train_idx, test_idx = next(gss.split(X, Y, groups=groups))
+    elapsed = time.time() - split_start
+    if env.VERBOSE:
+        env.logger.info(
+            f"[Split] Outer Butina split seed={random_state} "
+            f"(train={len(train_idx)}, test={len(test_idx)}, groups={len(np.unique(groups))}) "
+            f"completed in {elapsed:.2f}s"
+        )
     return X[train_idx], X[test_idx], Y[train_idx], Y[test_idx], train_idx, test_idx
 
 class ButinaKFold:
@@ -53,6 +78,7 @@ class ButinaKFold:
         self.n_splits = n_splits
         self.random_state = random_state
         self.shuffle = shuffle
+        self.cutoff = cutoff
 
         if smiles is None:
             raise ValueError("ButinaKFold requires 'smiles' in __init__")
@@ -60,6 +86,14 @@ class ButinaKFold:
         # --- OPTIMIZATION: Compute clusters once and store them ---
         self.groups = gen_butina_clusters(smiles, cutoff=cutoff)
         self.indices = np.arange(len(smiles))
+        self.n_groups = len(np.unique(self.groups))
+
+        if env.VERBOSE:
+            env.logger.info(
+                f"[CV Splitter] Initialized ButinaKFold "
+                f"(folds={self.n_splits}, seed={self.random_state}, shuffle={self.shuffle}, "
+                f"groups={self.n_groups}, cutoff={self.cutoff})"
+            )
 
     def get_n_splits(self, X=None, y=None, groups=None):
         return self.n_splits

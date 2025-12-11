@@ -2,7 +2,7 @@
 import datasets, env, models, util.util as util
 from database_manager import DatabaseManager
 from sklearn.model_selection import KFold, train_test_split
-import optuna, os, sqlite3
+import optuna, os, sqlite3, time
 import numpy as np
 from typing import Dict, Tuple
 from concurrent.futures import ProcessPoolExecutor, as_completed
@@ -105,6 +105,13 @@ class StudyManager:
             cv_splitter = KFold(env.N_FOLDS, shuffle=True, random_state=seed)
         # --- OPTIMIZATION END ---
 
+        splitter_name = type(cv_splitter).__name__
+        if env.VERBOSE:
+            cluster_msg = ""
+            if hasattr(cv_splitter, "groups"):
+                cluster_msg = f", groups={len(np.unique(cv_splitter.groups))}"
+            env.logger.info(f"[HP] Seed={seed} using {splitter_name} for inner CV{cluster_msg}")
+
         def objective(trial):
             # ... (progress printing code remains the same) ...
 
@@ -121,7 +128,15 @@ class StudyManager:
                 print(f"[HP] Trial failed: {exc}")
                 return 1e12
 
+        opt_start = time.time()
         study.optimize(objective, n_trials=env.N_TRIALS)
+        opt_elapsed = time.time() - opt_start
+
+        if env.VERBOSE:
+            env.logger.info(
+                f"[HP] Seed={seed} {splitter_name} optimization finished in {opt_elapsed:.2f}s "
+                f"(best_value={study.best_value:.4f})"
+            )
 
         return study.best_params
 
@@ -130,27 +145,42 @@ class StudyManager:
 
         # Check if SMILES exist (OpenADMETDataset has them)
         if hasattr(data, 'smiles') and data.smiles is not None:
-             # Use Butina Splitter for Outer Train/Test Split
-             X_train, X_test, Y_train, Y_test, idx_train, idx_test = butina_train_test_split(
+            # Use Butina Splitter for Outer Train/Test Split
+            split_start = time.time()
+            X_train, X_test, Y_train, Y_test, idx_train, idx_test = butina_train_test_split(
                 data.X, data.Y, data.smiles,
                 test_size=env.TEST_SIZE,
                 random_state=seed
             )
-             # Subset SMILES to match the training set (needed for inner CV)
-             smiles_train = data.smiles[idx_train]
+            if env.VERBOSE:
+                env.logger.info(
+                    f"[Split] Seed={seed} outer Butina split finished in {time.time() - split_start:.2f}s "
+                    f"(train={len(idx_train)}, test={len(idx_test)})"
+                )
+            # Subset SMILES to match the training set (needed for inner CV)
+            smiles_train = data.smiles[idx_train]
         else:
             # Fallback to Random Split
+            split_start = time.time()
             indices = np.arange(len(data.Y))
             X_train, X_test, Y_train, Y_test, idx_train, idx_test = train_test_split(
                 data.X, data.Y, indices,
                 test_size=env.TEST_SIZE, random_state=seed
             )
+            if env.VERBOSE:
+                env.logger.info(
+                    f"[Split] Seed={seed} random outer split finished in {time.time() - split_start:.2f}s "
+                    f"(train={len(idx_train)}, test={len(idx_test)})"
+                )
             smiles_train = None
 
         # Pass the training-set SMILES to the optimization routine
+        hpo_start = time.time()
         best_hyperparams = self.run_hyperparameter_optimization(
             X_train, Y_train, seed, smiles=smiles_train
         )
+        if env.VERBOSE:
+            env.logger.info(f"[HP] Seed={seed} hyperparameter search duration: {time.time() - hpo_start:.2f}s")
 
         test_predictions = self.train_and_predict(
             X_train, Y_train, X_test, best_hyperparams
