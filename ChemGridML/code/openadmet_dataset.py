@@ -65,27 +65,31 @@ class OpenADMETDataset:
         # Validate columns
         if self.smiles_column not in df.columns:
             raise ValueError(f"SMILES column '{self.smiles_column}' not found in CSV")
-        if self.target_property not in df.columns:
+        if self.target_property and self.target_property not in df.columns:
             raise ValueError(f"Target property '{self.target_property}' not found in CSV")
 
         # Get raw SMILES and target values from the dataframe
         raw_smiles = df[self.smiles_column].values
-        all_targets = df[self.target_property].values
+        if self.target_property:
+            all_targets = df[self.target_property].values
 
         # Convert SMILES to RDKit molecules
         mols = [Chem.MolFromSmiles(s) for s in raw_smiles]
 
         # Attempt to load features from cache
-        cache_key = f"{Path(self.csv_path).name}_{self.target_property}_{self.feature_type}.npz".replace(' ', '_')
-        cache_path = self.cache_dir / cache_key
+        if self.target_property:
+            cache_key = f"{Path(self.csv_path).name}_{self.target_property}_{self.feature_type}.npz".replace(' ', '_')
+            cache_path = self.cache_dir / cache_key
 
-        if self.use_cache and cache_path.exists():
-            try:
-                cached = np.load(cache_path, allow_pickle=True)
-                self.X = cached['X']
-                valid_indices = cached['valid_indices']
-                print(f"Loaded cached features: {cache_path}")
-            except Exception:
+            if self.use_cache and cache_path.exists():
+                try:
+                    cached = np.load(cache_path, allow_pickle=True)
+                    self.X = cached['X']
+                    valid_indices = cached['valid_indices']
+                    print(f"Loaded cached features: {cache_path}")
+                except Exception:
+                    self.X = None
+            else:
                 self.X = None
         else:
             self.X = None
@@ -94,6 +98,7 @@ class OpenADMETDataset:
         if self.X is None or (isinstance(self.X, np.ndarray) and self.X.size == 0):
             print(f"Generating {self.feature_type} features for {len(mols)} molecules...")
             self.X, valid_indices = features.getFeature(mols, self.feature_type)
+            self.smiles = raw_smiles[valid_indices]
             # Save to cache
             try:
                 if not isinstance(self.X, np.ndarray) or self.X.dtype == object:
@@ -104,42 +109,43 @@ class OpenADMETDataset:
             except Exception:
                 pass
 
-        # --- MODIFICATION START ---
-        # 1. Filter Targets AND SMILES using valid_indices (successful featurization)
-        # We perform this filtering before checking for NaN targets
-        self.Y = all_targets[valid_indices]
-        current_smiles = np.array(raw_smiles)[valid_indices]
-        # --- MODIFICATION END ---
+        if self.target_property:
+            # --- MODIFICATION START ---
+            # 1. Filter Targets AND SMILES using valid_indices (successful featurization)
+            # We perform this filtering before checking for NaN targets
+            self.Y = all_targets[valid_indices]
+            current_smiles = np.array(raw_smiles)[valid_indices]
+            # --- MODIFICATION END ---
 
-        # Handle missing values in targets
-        self.Y = pd.to_numeric(self.Y, errors='coerce')
+            # Handle missing values in targets
+            self.Y = pd.to_numeric(self.Y, errors='coerce')
 
-        # Store indices of non-missing values
-        non_missing_mask = ~np.isnan(self.Y)
+            # Store indices of non-missing values
+            non_missing_mask = ~np.isnan(self.Y)
 
-        if not non_missing_mask.any():
-            raise ValueError(f"No valid (non-missing) data points found for target '{self.target_property}'")
+            if not non_missing_mask.any():
+                raise ValueError(f"No valid (non-missing) data points found for target '{self.target_property}'")
 
-        # Final Filter: X, Y, and SMILES must all remain aligned based on valid targets
-        self.X = self.X[non_missing_mask]
-        self.Y = self.Y[non_missing_mask]
+            # Final Filter: X, Y, and SMILES must all remain aligned based on valid targets
+            self.X = self.X[non_missing_mask]
+            self.Y = self.Y[non_missing_mask]
 
-        # --- MODIFICATION START ---
-        self.smiles = current_smiles[non_missing_mask]
-        # --- MODIFICATION END ---
+            # --- MODIFICATION START ---
+            self.smiles = current_smiles[non_missing_mask]
+            # --- MODIFICATION END ---
 
-        # Store original indices (from the valid molecules)
-        self.original_indices = np.array(valid_indices)[non_missing_mask]
+            # Store original indices (from the valid molecules)
+            self.original_indices = np.array(valid_indices)[non_missing_mask]
 
-        # Store molecule names if available
-        if 'Molecule Name' in df.columns:
-            self.molecule_names = df['Molecule Name'].values[valid_indices][non_missing_mask]
-        else:
-            self.molecule_names = None
+            # Store molecule names if available
+            if 'Molecule Name' in df.columns:
+                self.molecule_names = df['Molecule Name'].values[valid_indices][non_missing_mask]
+            else:
+                self.molecule_names = None
 
-        print(f"Loaded {len(self.Y)} valid data points for {self.target_property}")
-        print(f"Target statistics: mean={np.mean(self.Y):.3f}, std={np.std(self.Y):.3f}, "
-              f"min={np.min(self.Y):.3f}, max={np.max(self.Y):.3f}")
+            print(f"Loaded {len(self.Y)} valid data points for {self.target_property}")
+            print(f"Target statistics: mean={np.mean(self.Y):.3f}, std={np.std(self.Y):.3f}, "
+                f"min={np.min(self.Y):.3f}, max={np.max(self.Y):.3f}")
 
 
     @staticmethod

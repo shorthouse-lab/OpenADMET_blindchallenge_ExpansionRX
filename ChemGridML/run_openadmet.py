@@ -230,6 +230,7 @@ class OpenADMETRunner:
 
         # Create custom dataset
         csv_path = self.config['data']['train_csv']
+        test_csv_path = self.config['data'].get('test_csv', None)
         target_property = self._unformat_dataset_name(method.dataset)
 
         try:
@@ -239,7 +240,7 @@ class OpenADMETRunner:
                 target_property=target_property,
                 feature_type=method.feature,
                 smiles_column=self.config['data'].get('smiles_column', 'SMILES')
-            )
+            ) 
 
             # Create modified study manager that uses our custom dataset
             manager = OpenADMETStudyManager(
@@ -265,6 +266,32 @@ class OpenADMETRunner:
             }
 
             print(f"✓ Completed in {elapsed_time:.2f} seconds")
+
+            if test_csv_path:
+                print("Getting final predictions")
+                test_dataset = OpenADMETDataset(
+                    csv_path=test_csv_path,
+                    target_property=None,
+                    feature_type=method.feature,
+                    smiles_column=self.config['data'].get('smiles_column', 'SMILES')
+                )
+                best_hyperparams = manager.run_hyperparameter_optimization(dataset.X, dataset.Y, 420, dataset.smiles)
+                test_predictions = manager.train_and_predict(dataset.X, dataset.Y, test_dataset.X, best_hyperparams)
+                
+                # Save predictions to CSV
+                final_predictions_dir = self.results_dir / "final_predictions"
+                os.makedirs(final_predictions_dir, exist_ok=True)
+                smiles_column = self.config['data'].get('smiles_column', 'SMILES')
+                predictions_df = pd.DataFrame({
+                    smiles_column: test_dataset.smiles,
+                    target_property: test_predictions
+                })
+                
+                
+                csv_filename = f"{method.feature}_{method.model}_{target_property}.csv"
+                csv_path = final_predictions_dir / csv_filename
+                predictions_df.to_csv(csv_path, index=False)
+                print(f"Predictions saved to {csv_path}")
 
         except Exception as e:
             elapsed_time = time.time() - start_time
@@ -483,14 +510,6 @@ class OpenADMETStudyManager(StudyManager):
                 except Exception as exc:
                     print(f"Seed {seed} failed: {exc}")
                     raise exc
-
-        # Optional: final pass to ensure all seeds present (idempotent due to REPLACE)
-        for seed in range(env.N_TESTS):
-            if predictions[seed] is not None:
-                self.db.store_predictions(
-                    self.method.dataset, self.method.feature, self.method.model,
-                    predictions[seed], indices[seed], seed, 'random'
-                )
 
 
 def main():
