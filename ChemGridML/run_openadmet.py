@@ -60,6 +60,12 @@ class OpenADMETRunner:
     def _setup_environment(self):
         """Update environment settings from config"""
         exp_config = self.config['experiment']
+
+        os.environ['N_TEST'] = str(exp_config.get('n_tests', 10))
+        os.environ['N_FOLDS'] = str(exp_config.get('n_folds', 5))
+        os.environ['N_TRIALS'] = str(exp_config.get('n_trials', 15))
+        os.environ['N_TEST_SIZE'] = str(exp_config.get('test_size', 0.2))
+
         env.N_TESTS = exp_config.get('n_tests', 10)
         env.N_FOLDS = exp_config.get('n_folds', 5)
         env.N_TRIALS = exp_config.get('n_trials', 15)
