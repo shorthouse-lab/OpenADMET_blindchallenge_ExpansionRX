@@ -4,7 +4,6 @@ from sklearn.exceptions import ConvergenceWarning, FitFailedWarning, UndefinedMe
 
 # Environment
 DEFAULT_FP_SIZE = 1024
-TEST_SIZE = 0.2
 _FORCE_CPU = os.getenv('CHEMGRID_FORCE_CPU', '0') == '1'
 if _FORCE_CPU:
 	DEVICE = 'cpu'
@@ -13,9 +12,10 @@ else:
 print(f"[env] DEVICE={DEVICE} (force_cpu={_FORCE_CPU})")
 
 # Study parameters
-N_TESTS = 10
-N_FOLDS = 5
-N_TRIALS = 15
+N_TESTS = int(os.getenv('N_TESTS', '10'))
+N_FOLDS = int(os.getenv('N_FOLDS', '5'))
+N_TRIALS = int(os.getenv('N_TRIALS', '15'))
+TEST_SIZE = float(os.getenv('N_TEST_SIZE', '0.2'))
 
 # Control sklearn thread usage (helps when also parallelizing across seeds)
 # Defaults to 1 to avoid oversubscription; can be overridden via env var.

@@ -51,6 +51,7 @@ class StudyManager:
         model_class = models.ModelRegistry.get_model(self.method.model)
         task_type = util.get_task_type(Y)
         model = model_class(task_type=task_type, **hyperparams)
+        print(env.N_FOLDS)
 
         # Loop uses the passed splitter (which has clusters cached in memory)
         for fold, (train_idx, val_idx) in enumerate(cv_splitter.split(X, Y)):
