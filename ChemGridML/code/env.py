@@ -15,7 +15,7 @@ print(f"[env] DEVICE={DEVICE} (force_cpu={_FORCE_CPU})")
 N_TESTS = int(os.getenv('N_TESTS', '10'))
 N_FOLDS = int(os.getenv('N_FOLDS', '5'))
 N_TRIALS = int(os.getenv('N_TRIALS', '15'))
-TEST_SIZE = float(os.getenv('TEST_SIZE', '0.2'))
+TEST_SIZE = float(os.getenv('N_TEST_SIZE', '0.2'))
 
 # Control sklearn thread usage (helps when also parallelizing across seeds)
 # Defaults to 1 to avoid oversubscription; can be overridden via env var.
