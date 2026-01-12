@@ -3,12 +3,12 @@
 
 # Path to training data CSV file
 data:
-  train_csv: "ExpansionRX_train.csv"
-  test_csv: "ExpansionRX_test.csv"  # Optional: for final predictions
+  train_csv: "expansion_data_train.csv"
+  test_csv: "expansion_data_test_blinded.csv"  # Optional: for final predictions
   smiles_column: "SMILES"
 
 # Target properties to predict
-# Available: LogD, KSOL, HLM CLint, MLM CLint, Caco-2 Permeability Papp A>B, 
+# Available: LogD, KSOL, HLM CLint, MLM CLint, Caco-2 Permeability Papp A>B,
 #            Caco-2 Permeability Efflux, MPPB, MBPB, MGMB
 # Use null/empty list to automatically detect all available targets
 targets:
@@ -16,14 +16,21 @@ targets:
   - "KSOL"
   - "HLM CLint"
   - "MLM CLint"
+  - "Caco-2 Permeability Papp A>B"
+  - "Caco-2 Permeability Efflux"
+  - "MPPB"
+  - "MBPB"
+  - "MGMB"
   # Add more targets as needed
 
 # Molecular features/descriptors to test
 # Available: ECFP, AtomPair, MACCS, RDKitFP, TOPOTOR, MOL2VEC, GRAPH
 features:
   - "ECFP"
+  - "AtomPair"
   - "MACCS"
   - "RDKitFP"
+  - "TOPOTOR"
   - "MOL2VEC"
   # - "GRAPH"  # Uncomment for graph-based features (slower, requires GPU)
 
@@ -34,26 +41,26 @@ models:
   - "RF"
   - "XGBoost"
   - "FNN"
-  # - "SVM"
-  # - "ElasticNet"
-  # - "KNN"
+  - "SVM"
+  - "ElasticNet"
+  - "KNN"
   # - "GCN"  # Requires GRAPH features
   # - "GAT"  # Requires GRAPH features
 
 # Experiment parameters
 experiment:
   name: "OpenADMET_Benchmark"
-  n_tests: 10          # Number of random train-test splits
-  n_folds: 5           # Number of cross-validation folds for hyperparameter tuning
-  n_trials: 15         # Number of Optuna hyperparameter optimization trials
+  n_tests: 1          # Number of random train-test splits
+  n_folds: 3           # Number of cross-validation folds for hyperparameter tuning
+  n_trials: 2         # Number of Optuna hyperparameter optimization trials
   test_size: 0.2       # Fraction of data to use for testing
-  
+
 # Output settings
 output:
-  results_dir: "openadmet_results"
+  results_dir: "test"
   save_predictions: true
   save_models: false  # Set to true to save trained models
-  
+
 # Visualization settings
 visualization:
   create_plots: true
