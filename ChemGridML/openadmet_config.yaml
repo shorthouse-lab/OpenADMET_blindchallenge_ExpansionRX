@@ -57,9 +57,9 @@ experiment:
 
 # Output settings
 output:
-  results_dir: "test"
+  results_dir: "openadmet_results_final"
   save_predictions: true
-  save_models: false  # Set to true to save trained models
+  save_models: true  # Set to true to save trained models
 
 # Visualization settings
 visualization:
