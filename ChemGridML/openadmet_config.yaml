@@ -50,9 +50,9 @@ models:
 # Experiment parameters
 experiment:
   name: "OpenADMET_Benchmark"
-  n_tests: 1          # Number of random train-test splits
-  n_folds: 3           # Number of cross-validation folds for hyperparameter tuning
-  n_trials: 2         # Number of Optuna hyperparameter optimization trials
+  n_tests: 10          # Number of random train-test splits
+  n_folds: 5           # Number of cross-validation folds for hyperparameter tuning
+  n_trials: 15         # Number of Optuna hyperparameter optimization trials
   test_size: 0.2       # Fraction of data to use for testing
 
 # Output settings
