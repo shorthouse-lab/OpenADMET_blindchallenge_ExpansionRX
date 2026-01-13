@@ -4,8 +4,8 @@
 # Job resources (adjust if needed)
 #$ -N openadmet_single
 #$ -l h_rt=48:0:0        # walltime reservation
-#$ -l mem=32G            # RAM
-#$ -pe smp 8             # CPU cores
+#$ -l mem=4G             # per-core RAM (4G * 4 cores = 16G total)
+#$ -pe smp 4             # CPU cores
 #$ -l gpu=1              # drop if CPU-only
 #$ -cwd
 #$ -j y
