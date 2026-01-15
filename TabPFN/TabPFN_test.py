@@ -349,6 +349,8 @@ if __name__ == "__main__":
     train_output_path = base_dir / "data/processed/tabpfn_train.csv"
     test_output_path = base_dir / "data/processed/tabpfn_test_blinded.csv"
 
+    results_output_path = base_dir / "data/results/openadmet_submission.csv"
+
     if not train_output_path.exists():
         tabpfn_train = build_tabpfn_input(
             raw_path=train_csv_path,
@@ -368,6 +370,8 @@ if __name__ == "__main__":
     train_df = pd.read_csv(train_output_path)
     test_df = pd.read_csv(test_output_path)
 
+    ids = test_df["Molecule Name"]
+
     preds = run_tabpfn_zero_shot(
         train_df=train_df,
         test_df=test_df,
@@ -376,4 +380,4 @@ if __name__ == "__main__":
         expand_fingerprint_bits=True,  # needed for numeric features
     )
 
-    print(preds)
+    results_df = attach_predictions_to_raw(raw_path = test_csv_path, predictions=preds, output_path = results_output_path, ids=ids)
