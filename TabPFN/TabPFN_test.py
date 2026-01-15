@@ -24,6 +24,40 @@ TARGET_NAMES = [
     "MGMB",
 ]
 
+CONVERSION_DATA = """Assay,Log_Scale,Multiplier,Log_name
+LogD,False,1,LogD
+KSOL,True,1e-6,LogS
+HLM CLint,True,1,Log_HLM_CLint
+MLM CLint,True,1,Log_MLM_CLint
+Caco-2 Permeability Papp A>B,True,1e-6,Log_Caco_Papp_AB
+Caco-2 Permeability Efflux,True,1,Log_Caco_ER
+MPPB,True,1,Log_Mouse_PPB
+MBPB,True,1,Log_Mouse_BPB
+MGMB,True,1,Log_Mouse_MPB
+"""
+
+
+def build_conversion_maps():
+    """Parse the conversion CSV string into lookup maps."""
+    from io import StringIO
+
+    conversion_df = pd.read_csv(StringIO(CONVERSION_DATA))
+    conversion_df["Log_Scale"] = conversion_df["Log_Scale"].astype(bool)
+    conversion_df["Multiplier"] = conversion_df["Multiplier"].astype(float)
+
+    forward_map = {
+        row["Assay"]: (row["Log_Scale"], row["Multiplier"], row["Log_name"])
+        for _, row in conversion_df.iterrows()
+    }
+    reverse_map = {
+        row["Log_name"]: (row["Assay"], row["Log_Scale"], row["Multiplier"])
+        for _, row in conversion_df.iterrows()
+    }
+    return conversion_df, forward_map, reverse_map
+
+
+CONVERSION_DF, FORWARD_MAP, REVERSE_MAP = build_conversion_maps()
+
 
 def get_device_type() -> str:
     """Get the device type to use for TabPFN training and inference."""
@@ -136,6 +170,94 @@ def expand_fp_column(
         columns=[f"{prefix}_{i}" for i in range(fingerprint_bits)],
     )
     return df.drop(columns=[fp_column]).join(bit_df)
+
+
+def forward_transform(
+    train_df: pd.DataFrame,
+    forward_map: Optional[dict] = None,
+) -> pd.DataFrame:
+    """
+    Forward-transform raw assay columns into log-space columns using the map.
+    Keeps SMILES and Molecule Name; produces columns named by Log_name.
+    """
+    forward_map = forward_map or FORWARD_MAP
+    log_train_df = train_df[["SMILES", "Molecule Name"]].copy()
+
+    for assay, (log_scale, multiplier, log_name) in forward_map.items():
+        if assay not in train_df.columns:
+            continue
+        x = pd.to_numeric(train_df[assay], errors="coerce")
+        if log_scale:
+            x = x + 1  # optional offset to avoid log(0)
+            x = np.log10(x * multiplier)
+        log_train_df[log_name] = x
+
+    expected_cols = {"SMILES", "Molecule Name"} | {v[2] for v in forward_map.values()}
+    missing = expected_cols - set(log_train_df.columns)
+    if missing:
+        raise ValueError(f"Missing transformed columns: {missing}")
+    return log_train_df
+
+
+def inverse_transform(
+    pred_df_log: pd.DataFrame, reverse_map: Optional[dict] = None
+) -> pd.DataFrame:
+    """
+    Reverse-transform log-space predictions back to raw assay units.
+    Keeps SMILES and Molecule Name; outputs raw assay names.
+    """
+    reverse_map = reverse_map or REVERSE_MAP
+    output_df = pred_df_log[["SMILES", "Molecule Name"]].copy()
+
+    for log_name, (assay_name, log_scale, multiplier) in reverse_map.items():
+        if log_name not in pred_df_log.columns:
+            continue
+        y = pd.to_numeric(pred_df_log[log_name], errors="coerce")
+        if log_scale:
+            y = (10 ** y) * (1 / multiplier) - 1
+        output_df[assay_name] = y
+
+    expected_cols = {"SMILES", "Molecule Name"} | {v[0] for v in reverse_map.values()}
+    missing = expected_cols - set(output_df.columns)
+    if missing:
+        raise ValueError(f"Missing inverse-transformed columns: {missing}")
+    return output_df
+
+
+def run_normalization_self_checks():
+    """Quick round-trip and NaN preservation checks for the conversions."""
+    forward_map = FORWARD_MAP
+    reverse_map = REVERSE_MAP
+
+    synthetic = {
+        "SMILES": ["C", "CC"],
+        "Molecule Name": ["m1", "m2"],
+    }
+    for assay, (log_scale, _, _) in forward_map.items():
+        synthetic[assay] = [1.5, np.nan] if log_scale else [2.5, np.nan]
+    raw_df = pd.DataFrame(synthetic)
+
+    log_df = forward_transform(raw_df, forward_map=forward_map)
+    round_trip = inverse_transform(log_df, reverse_map=reverse_map)
+
+    for assay in forward_map:
+        a = raw_df[assay]
+        b = round_trip[assay]
+        mask = a.notna()
+        if mask.any() and not np.allclose(a[mask], b[mask], equal_nan=True):
+            raise AssertionError(f"Round-trip mismatch for {assay}")
+        if a.isna().any() and not b.isna().equals(a.isna()):
+            raise AssertionError(f"NaN preservation failed for {assay}")
+
+    expected_log_cols = {"SMILES", "Molecule Name"} | {v[2] for v in forward_map.values()}
+    if set(log_df.columns) != expected_log_cols:
+        raise AssertionError("Log dataframe columns mismatch.")
+
+    expected_raw_cols = {"SMILES", "Molecule Name"} | set(forward_map.keys())
+    if set(round_trip.columns) != expected_raw_cols:
+        raise AssertionError("Inverse dataframe columns mismatch.")
+
+    return True
 
 
 def _prepare_feature_matrices(
