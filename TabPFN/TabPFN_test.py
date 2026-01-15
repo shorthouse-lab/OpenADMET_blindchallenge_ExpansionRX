@@ -175,6 +175,7 @@ def expand_fp_column(
 def forward_transform(
     train_df: pd.DataFrame,
     forward_map: Optional[dict] = None,
+    include_non_log: bool = True,
 ) -> pd.DataFrame:
     """
     Forward-transform raw assay columns into log-space columns using the map.
@@ -190,9 +191,13 @@ def forward_transform(
         if log_scale:
             x = x + 1  # optional offset to avoid log(0)
             x = np.log10(x * multiplier)
-        log_train_df[log_name] = x
+            log_train_df[log_name] = x
+        elif include_non_log:
+            # Keep non-log targets unchanged if requested (e.g., LogD)
+            log_train_df[log_name] = x
+        # else skip non-log targets entirely
 
-    expected_cols = {"SMILES", "Molecule Name"} | {v[2] for v in forward_map.values()}
+    expected_cols = {"SMILES", "Molecule Name"} | {v[2] for v in forward_map.values() if include_non_log or v[0]}
     missing = expected_cols - set(log_train_df.columns)
     if missing:
         raise ValueError(f"Missing transformed columns: {missing}")
@@ -272,6 +277,10 @@ def _prepare_feature_matrices(
     """Return aligned feature matrices for train/test and training medians for imputation."""
     processed_train = train_df.copy()
     processed_test = test_df.copy()
+
+    # Remove any duplicate columns to avoid pandas reindex errors
+    processed_train = processed_train.loc[:, ~processed_train.columns.duplicated()]
+    processed_test = processed_test.loc[:, ~processed_test.columns.duplicated()]
 
     if expand_fingerprint_bits:
         fp_columns = list(fp_columns) if fp_columns is not None else ["morgan_fp", "maccs_fp"]
@@ -409,33 +418,59 @@ def run_tabpfn_zero_shot_normalized(
     forward_map = forward_map or FORWARD_MAP
     reverse_map = reverse_map or REVERSE_MAP
 
-    # Build log-space targets on the training data
-    log_train_df = forward_transform(train_df, forward_map=forward_map)
-    log_target_names = [cfg[2] for cfg in forward_map.values()]
+    log_forward_map = {k: v for k, v in forward_map.items() if v[0]}
+    non_log_targets = [k for k, v in forward_map.items() if not v[0]]
 
-    train_with_logs = pd.concat(
-        [train_df, log_train_df.drop(columns=["SMILES", "Molecule Name"])], axis=1
-    )
+    log_target_names = [cfg[2] for cfg in log_forward_map.values()]
+    raw_predictions = {}
 
-    log_predictions = run_tabpfn_zero_shot(
-        train_df=train_with_logs,
-        test_df=test_df,
-        target_names=log_target_names,
-        device=device,
-        fingerprint_bits=fingerprint_bits,
-        expand_fingerprint_bits=expand_fingerprint_bits,
-        fp_columns=fp_columns,
-        additional_non_feature_cols=forward_map.keys(),  # drop raw assays from features
-    )
+    if log_target_names:
+        log_train_df = forward_transform(
+            train_df, forward_map=log_forward_map, include_non_log=False
+        )
 
-    pred_df_log = test_df[["SMILES", "Molecule Name"]].copy()
-    for col, vals in log_predictions.items():
-        pred_df_log[col] = vals
+        train_base = train_df.drop(columns=log_target_names, errors="ignore")
+        train_with_logs = pd.concat(
+            [train_base, log_train_df.drop(columns=["SMILES", "Molecule Name"])], axis=1
+        )
 
-    pred_df_raw = inverse_transform(pred_df_log, reverse_map=reverse_map)
-    raw_predictions = {
-        assay: pred_df_raw[assay].values for assay in forward_map.keys() if assay in pred_df_raw
-    }
+        log_predictions = run_tabpfn_zero_shot(
+            train_df=train_with_logs,
+            test_df=test_df,
+            target_names=log_target_names,
+            device=device,
+            fingerprint_bits=fingerprint_bits,
+            expand_fingerprint_bits=expand_fingerprint_bits,
+            fp_columns=fp_columns,
+            additional_non_feature_cols=forward_map.keys(),  # drop raw assays from features
+        )
+
+        pred_df_log = test_df[["SMILES", "Molecule Name"]].copy()
+        for col, vals in log_predictions.items():
+            pred_df_log[col] = vals
+
+        pred_df_raw = inverse_transform(pred_df_log, reverse_map=reverse_map)
+        raw_predictions.update(
+            {assay: pred_df_raw[assay].values for assay in log_forward_map if assay in pred_df_raw}
+        )
+    else:
+        pred_df_log = test_df[["SMILES", "Molecule Name"]].copy()
+        pred_df_raw = pred_df_log.copy()
+
+    if non_log_targets:
+        non_log_preds = run_tabpfn_zero_shot(
+            train_df=train_df,
+            test_df=test_df,
+            target_names=non_log_targets,
+            device=device,
+            fingerprint_bits=fingerprint_bits,
+            expand_fingerprint_bits=expand_fingerprint_bits,
+            fp_columns=fp_columns,
+            additional_non_feature_cols=forward_map.keys(),
+        )
+        raw_predictions.update(non_log_preds)
+        for assay, vals in non_log_preds.items():
+            pred_df_raw[assay] = vals
 
     return raw_predictions, pred_df_log, pred_df_raw
 
