@@ -267,6 +267,7 @@ def _prepare_feature_matrices(
     fingerprint_bits: int,
     expand_fingerprint_bits: bool,
     fp_columns: Optional[Iterable[str]] = None,
+    additional_non_feature_cols: Optional[Iterable[str]] = None,
 ) -> Tuple[pd.DataFrame, pd.DataFrame, pd.Series]:
     """Return aligned feature matrices for train/test and training medians for imputation."""
     processed_train = train_df.copy()
@@ -280,6 +281,8 @@ def _prepare_feature_matrices(
             processed_test = expand_fp_column(processed_test, bit_hint, fp_column=fp_col)
 
     non_feature_cols = {"Molecule Name", "SMILES", *target_names}
+    if additional_non_feature_cols:
+        non_feature_cols |= set(additional_non_feature_cols)
     train_feature_cols = [c for c in processed_train.columns if c not in non_feature_cols]
     test_feature_cols = [c for c in processed_test.columns if c not in non_feature_cols]
     feature_cols = sorted(set(train_feature_cols) | set(test_feature_cols))
@@ -305,6 +308,7 @@ def run_tabpfn_zero_shot(
     fingerprint_bits: int = 2048,
     expand_fingerprint_bits: bool = True,
     fp_columns: Optional[Iterable[str]] = None,
+    additional_non_feature_cols: Optional[Iterable[str]] = None,
 ) -> dict:
     """
     Run zero-shot TabPFNRegressor per endpoint and return predictions keyed by target.
@@ -328,6 +332,7 @@ def run_tabpfn_zero_shot(
         fingerprint_bits=fingerprint_bits,
         expand_fingerprint_bits=expand_fingerprint_bits,
         fp_columns=fp_columns,
+        additional_non_feature_cols=additional_non_feature_cols,
     )
 
     predictions = {}
@@ -381,6 +386,58 @@ def attach_predictions_to_raw(
     output_path.parent.mkdir(parents=True, exist_ok=True)
     merged.to_csv(output_path, index=False)
     return merged
+
+
+def run_tabpfn_zero_shot_normalized(
+    train_df: pd.DataFrame,
+    test_df: pd.DataFrame,
+    device: Optional[str] = None,
+    fingerprint_bits: int = 2048,
+    expand_fingerprint_bits: bool = True,
+    fp_columns: Optional[Iterable[str]] = None,
+    forward_map: Optional[dict] = None,
+    reverse_map: Optional[dict] = None,
+) -> Tuple[dict, pd.DataFrame, pd.DataFrame]:
+    """
+    Run zero-shot TabPFN in log space (forward) and return raw-space predictions.
+
+    Returns:
+        raw_predictions: dict of assay_name -> np.ndarray (raw units)
+        pred_df_log: dataframe with log-space predictions and identifiers
+        pred_df_raw: dataframe with raw-space predictions and identifiers
+    """
+    forward_map = forward_map or FORWARD_MAP
+    reverse_map = reverse_map or REVERSE_MAP
+
+    # Build log-space targets on the training data
+    log_train_df = forward_transform(train_df, forward_map=forward_map)
+    log_target_names = [cfg[2] for cfg in forward_map.values()]
+
+    train_with_logs = pd.concat(
+        [train_df, log_train_df.drop(columns=["SMILES", "Molecule Name"])], axis=1
+    )
+
+    log_predictions = run_tabpfn_zero_shot(
+        train_df=train_with_logs,
+        test_df=test_df,
+        target_names=log_target_names,
+        device=device,
+        fingerprint_bits=fingerprint_bits,
+        expand_fingerprint_bits=expand_fingerprint_bits,
+        fp_columns=fp_columns,
+        additional_non_feature_cols=forward_map.keys(),  # drop raw assays from features
+    )
+
+    pred_df_log = test_df[["SMILES", "Molecule Name"]].copy()
+    for col, vals in log_predictions.items():
+        pred_df_log[col] = vals
+
+    pred_df_raw = inverse_transform(pred_df_log, reverse_map=reverse_map)
+    raw_predictions = {
+        assay: pred_df_raw[assay].values for assay in forward_map.keys() if assay in pred_df_raw
+    }
+
+    return raw_predictions, pred_df_log, pred_df_raw
 
 
 def run_tabpfn_finetune(*args, **kwargs):
@@ -468,17 +525,20 @@ if __name__ == "__main__":
     train_MD_feat_path = base_dir / "data/features/MD_features_train.csv"
     test_MD_feat_path = base_dir / "data/features/MD_features_test_blinded.csv"
 
-    train_output_path = base_dir / "data/processed/tabpfn_train.csv"
-    test_output_path = base_dir / "data/processed/tabpfn_test_blinded.csv"
+    train_output_path = base_dir / "data/processed/RDKit_MD_MACCs_log/tabpfn_train.csv"
+    test_output_path = base_dir / "data/processed/RDKit_MD_MACCs_log/tabpfn_test_blinded.csv"
 
-    results_output_path = base_dir / "data/results/openadmet_submission.csv"
+    results_output_path = base_dir / "data/results/RDKit_MD_MACCs_log/openadmet_submission.csv"
+
+    # Toggle to enable log-space normalization of assay endpoints
+    use_normalization = True
 
     if not train_output_path.exists():
         tabpfn_train = build_tabpfn_input(
             raw_path=train_csv_path,
             md_features_path=train_MD_feat_path,
             output_path=train_output_path,
-            fingerprint_type = "maccs"
+            fingerprint_type="maccs",
         )
 
     if not test_output_path.exists():
@@ -486,7 +546,7 @@ if __name__ == "__main__":
             raw_path=test_csv_path,
             md_features_path=test_MD_feat_path,
             output_path=test_output_path,
-            fingerprint_type = "maccs"
+            fingerprint_type="maccs",
         )
 
     train_df = pd.read_csv(train_output_path)
@@ -494,12 +554,30 @@ if __name__ == "__main__":
 
     ids = test_df["Molecule Name"]
 
-    preds = run_tabpfn_zero_shot(
-        train_df=train_df,
-        test_df=test_df,
-        target_names=TARGET_NAMES,
-        device=get_device_type(),
-        expand_fingerprint_bits=True,  # needed for numeric features
-    )
-
-    results_df = attach_predictions_to_raw(raw_path = test_csv_path, predictions=preds, output_path = results_output_path, ids=ids)
+    if use_normalization:
+        raw_preds, pred_df_log, pred_df_raw = run_tabpfn_zero_shot_normalized(
+            train_df=train_df,
+            test_df=test_df,
+            device=get_device_type(),
+            expand_fingerprint_bits=True,  # needed for numeric features
+        )
+        results_df = attach_predictions_to_raw(
+            raw_path=test_csv_path,
+            predictions=raw_preds,
+            output_path=results_output_path,
+            ids=ids,
+        )
+    else:
+        preds = run_tabpfn_zero_shot(
+            train_df=train_df,
+            test_df=test_df,
+            target_names=TARGET_NAMES,
+            device=get_device_type(),
+            expand_fingerprint_bits=True,  # needed for numeric features
+        )
+        results_df = attach_predictions_to_raw(
+            raw_path=test_csv_path,
+            predictions=preds,
+            output_path=results_output_path,
+            ids=ids,
+        )
