@@ -7,6 +7,8 @@ from rdkit import Chem, DataStructs
 from rdkit.Chem import AllChem, Descriptors
 from rdkit.ML.Descriptors.MoleculeDescriptors import MolecularDescriptorCalculator
 
+TARGET_NAMES = ["LogD","KSOL","HLM" "CLint","MLM CLint","Caco-2 Permeability Papp A>B","Caco-2 Permeability Efflux","MPPB","MBPB","MGMB"]
+
 
 def _descriptor_calculator() -> Tuple[MolecularDescriptorCalculator, Tuple[str, ...]]:
     """Return a calculator limited to RDKit 2D descriptors."""
@@ -23,9 +25,18 @@ _DESC_CALCULATOR, _DESC_NAMES = _descriptor_calculator()
 
 
 def _featurize_smiles(
-    smiles: str, fingerprint_radius: int, fingerprint_bits: int, mol_id: str
+    smiles: str,
+    fingerprint_radius: int,
+    fingerprint_bits: int,
+    mol_id: str,
+    expand_fingerprint_bits: bool,
 ) -> dict:
-    """Calculate 2D descriptors and a Morgan fingerprint for a single SMILES."""
+    """
+    Calculate 2D descriptors and a Morgan fingerprint for a single SMILES.
+
+    If expand_fingerprint_bits is False, the fingerprint is stored as a single
+    bitstring column ('morgan_fp'); otherwise each bit becomes its own column.
+    """
     if not isinstance(smiles, str) or not smiles.strip():
         raise ValueError(f"No SMILES provided for ID '{mol_id}'.")
 
@@ -39,9 +50,13 @@ def _featurize_smiles(
     bit_vector = AllChem.GetMorganFingerprintAsBitVect(
         mol, radius=fingerprint_radius, nBits=fingerprint_bits
     )
-    bit_array = np.zeros((fingerprint_bits,), dtype=int)
-    DataStructs.ConvertToNumpyArray(bit_vector, bit_array)
-    descriptors.update({f"morgan_{i}": int(bit) for i, bit in enumerate(bit_array)})
+
+    if expand_fingerprint_bits:
+        bit_array = np.zeros((fingerprint_bits,), dtype=int)
+        DataStructs.ConvertToNumpyArray(bit_vector, bit_array)
+        descriptors.update({f"morgan_{i}": int(bit) for i, bit in enumerate(bit_array)})
+    else:
+        descriptors["morgan_fp"] = DataStructs.BitVectToText(bit_vector)
     return descriptors
 
 
@@ -53,11 +68,15 @@ def build_tabpfn_input(
     md_id_column: str = "ID",
     fingerprint_radius: int = 2,
     fingerprint_bits: int = 2048,
+    expand_fingerprint_bits: bool = False,
     output_path: Optional[Union[str, Path]] = None,
 ) -> pd.DataFrame:
     """
     Load a raw dataset, merge with MD features on ID, and append RDKit 2D descriptors
     plus a Morgan fingerprint.
+
+    By default the Morgan fingerprint is stored as a single bitstring column
+    ('morgan_fp'); set expand_fingerprint_bits=True to emit one column per bit.
 
     Returns the enriched dataframe; if output_path is provided it is also written to CSV.
     """
@@ -77,7 +96,13 @@ def build_tabpfn_input(
     merged = raw_df.merge(md_df, how="left", on="ID")
 
     feature_rows = [
-        _featurize_smiles(smiles, fingerprint_radius, fingerprint_bits, mol_id)
+        _featurize_smiles(
+            smiles,
+            fingerprint_radius,
+            fingerprint_bits,
+            mol_id,
+            expand_fingerprint_bits,
+        )
         for smiles, mol_id in zip(merged[smiles_column], merged["ID"])
     ]
     features_df = pd.DataFrame(feature_rows)
@@ -91,18 +116,29 @@ def build_tabpfn_input(
 
     return enriched
 
-train_csv_path = Path("data/raw/expansion_data_train.csv")
-test_csv_path = Path("data/raw/expansion_data_test_blinded.csv")
 
-train_MD_feat_path = Path("data/features/MD_features_train.csv")
-test_MD_feat_path = Path("data/features/MD_features_test_blinded.csv")
+if __name__ == "__main__":
+    base_dir = Path(__file__).resolve().parent
 
-train_output_path = Path("data/processed/tabpfn_train.csv")
-test_output_path = Path("data/processed/tabpfn_test_blinded.csv")
+    train_csv_path = base_dir / "data/raw/expansion_data_train.csv"
+    test_csv_path = base_dir / "data/raw/expansion_data_test_blinded.csv"
 
-tabpfn_train = build_tabpfn_input(
-    raw_path=train_csv_path,
-    md_features_path=train_MD_feat_path,
-    output_path=train_output_path
-    )
+    train_MD_feat_path = base_dir / "data/features/MD_features_train.csv"
+    test_MD_feat_path = base_dir / "data/features/MD_features_test_blinded.csv"
 
+    train_output_path = base_dir / "data/processed/tabpfn_train.csv"
+    test_output_path = base_dir / "data/processed/tabpfn_test_blinded.csv"
+
+    if not train_output_path.exists():
+        tabpfn_train = build_tabpfn_input(
+            raw_path=train_csv_path,
+            md_features_path=train_MD_feat_path,
+            output_path=train_output_path,
+        )
+
+    if not test_output_path.exists():
+        tabpfn_test = build_tabpfn_input(
+            raw_path=test_csv_path,
+            md_features_path=test_MD_feat_path,
+            output_path=test_output_path,
+        )
