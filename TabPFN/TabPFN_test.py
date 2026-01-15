@@ -226,6 +226,41 @@ def run_tabpfn_zero_shot(
     return predictions
 
 
+def attach_predictions_to_raw(
+    raw_path: Union[str, Path],
+    predictions: dict,
+    output_path: Union[str, Path],
+    id_column: str = "Molecule Name",
+    ids: Optional[Iterable] = None,
+) -> pd.DataFrame:
+    """
+    Concatenate predictions onto the raw blinded dataframe and save to CSV.
+
+    If ids are provided, predictions are aligned on that column; otherwise row
+    order is assumed to match the dataframe used for prediction.
+    """
+    raw_df = pd.read_csv(raw_path)
+    pred_df = pd.DataFrame(predictions)
+
+    if ids is not None:
+        pred_df[id_column] = list(ids)
+        merged = raw_df.merge(pred_df, how="left", on=id_column)
+    else:
+        if len(pred_df) != len(raw_df):
+            raise ValueError(
+                f"Prediction length ({len(pred_df)}) does not match raw rows ({len(raw_df)})."
+            )
+        pred_df.index = raw_df.index
+        merged = raw_df.copy()
+        for col in pred_df.columns:
+            merged[col] = pred_df[col]
+
+    output_path = Path(output_path)
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    merged.to_csv(output_path, index=False)
+    return merged
+
+
 def run_tabpfn_finetune(*args, **kwargs):
     """
     Placeholder for a fine-tuning workflow.
