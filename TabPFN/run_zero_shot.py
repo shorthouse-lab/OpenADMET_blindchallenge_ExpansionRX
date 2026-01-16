@@ -100,7 +100,8 @@ def main():
         for col, vals in preds_log.items():
             pred_df_log[col] = vals
         pred_df_raw = inverse_transform(pred_df_log, REVERSE_MAP)
-        raw_preds = {col: pred_df_raw[col].values for col in REVERSE_MAP if col in pred_df_raw}
+        raw_cols = [cfg[0] for cfg in REVERSE_MAP.values()]
+        raw_preds = {col: pred_df_raw[col].values for col in raw_cols if col in pred_df_raw}
         attach_predictions_to_raw(
             raw_path=raw_test_path,
             predictions=raw_preds,
