@@ -27,6 +27,10 @@ TARGET_NAMES = [
 DEFAULT_FINETUNE_EPOCHS = 5
 DEFAULT_FINETUNE_LR = 1e-3
 DEFAULT_FINETUNE_BATCH_SIZE = 256
+DEFAULT_FINETUNE_CTX_PLUS_QUERY_SAMPLES = 4096
+DEFAULT_NUM_ESTIMATORS_FINETUNE = 2
+DEFAULT_NUM_ESTIMATORS_VALIDATION = 2
+DEFAULT_NUM_ESTIMATORS_FINAL_INFERENCE = 2
 
 
 def _try_finetune(
@@ -80,6 +84,10 @@ def _build_finetune_wrapper(
     epochs: int,
     lr: float,
     batch_size: int,
+    n_ctx_plus_query: Optional[int],
+    n_estimators_finetune: Optional[int],
+    n_estimators_validation: Optional[int],
+    n_estimators_final: Optional[int],
     logger,
 ) -> Tuple[Optional[object], bool]:
     """
@@ -105,6 +113,13 @@ def _build_finetune_wrapper(
     _maybe_add(("epochs", "n_epochs", "num_epochs"), epochs)
     _maybe_add(("learning_rate", "lr"), lr)
     _maybe_add(("batch_size", "bs"), batch_size)
+    _maybe_add(
+        ("n_finetune_ctx_plus_query_samples", "finetune_ctx_plus_query_samples", "ctx_plus_query_samples"),
+        n_ctx_plus_query,
+    )
+    _maybe_add("n_estimators_finetune", n_estimators_finetune)
+    _maybe_add("n_estimators_validation", n_estimators_validation)
+    _maybe_add("n_estimators_final_inference", n_estimators_final)
 
     try:
         model = FinetunedTabPFNRegressor(**kwargs)
@@ -159,6 +174,10 @@ def run_tabpfn_finetune(
     finetune_epochs: int = DEFAULT_FINETUNE_EPOCHS,
     finetune_lr: float = DEFAULT_FINETUNE_LR,
     finetune_batch_size: int = DEFAULT_FINETUNE_BATCH_SIZE,
+    n_ctx_plus_query: Optional[int] = DEFAULT_FINETUNE_CTX_PLUS_QUERY_SAMPLES,
+    n_estimators_finetune: Optional[int] = DEFAULT_NUM_ESTIMATORS_FINETUNE,
+    n_estimators_validation: Optional[int] = DEFAULT_NUM_ESTIMATORS_VALIDATION,
+    n_estimators_final: Optional[int] = DEFAULT_NUM_ESTIMATORS_FINAL_INFERENCE,
     checkpoint_dir: Optional[Union[str, Path]] = None,
     logger=None,
 ) -> dict:
@@ -202,6 +221,10 @@ def run_tabpfn_finetune(
             epochs=finetune_epochs,
             lr=finetune_lr,
             batch_size=finetune_batch_size,
+            n_ctx_plus_query=n_ctx_plus_query,
+            n_estimators_finetune=n_estimators_finetune,
+            n_estimators_validation=n_estimators_validation,
+            n_estimators_final=n_estimators_final,
             logger=logger,
         )
 
@@ -242,6 +265,10 @@ def main():
     FINETUNE_EPOCHS = DEFAULT_FINETUNE_EPOCHS
     FINETUNE_LR = DEFAULT_FINETUNE_LR
     FINETUNE_BATCH_SIZE = DEFAULT_FINETUNE_BATCH_SIZE
+    FINETUNE_CTX_PLUS_QUERY = DEFAULT_FINETUNE_CTX_PLUS_QUERY_SAMPLES
+    NUM_ESTIMATORS_FINETUNE = DEFAULT_NUM_ESTIMATORS_FINETUNE
+    NUM_ESTIMATORS_VALIDATION = DEFAULT_NUM_ESTIMATORS_VALIDATION
+    NUM_ESTIMATORS_FINAL = DEFAULT_NUM_ESTIMATORS_FINAL_INFERENCE
     CHECKPOINT_DIR = base_dir / "models"
 
     dataset_dir = base_dir / "data/processed/RDKit_MD_MACCs_log"
@@ -263,6 +290,10 @@ def main():
             finetune_epochs=FINETUNE_EPOCHS,
             finetune_lr=FINETUNE_LR,
             finetune_batch_size=FINETUNE_BATCH_SIZE,
+            n_ctx_plus_query=FINETUNE_CTX_PLUS_QUERY,
+            n_estimators_finetune=NUM_ESTIMATORS_FINETUNE,
+            n_estimators_validation=NUM_ESTIMATORS_VALIDATION,
+            n_estimators_final=NUM_ESTIMATORS_FINAL,
             checkpoint_dir=CHECKPOINT_DIR,
             logger=logger,
         )
@@ -289,6 +320,10 @@ def main():
             finetune_epochs=FINETUNE_EPOCHS,
             finetune_lr=FINETUNE_LR,
             finetune_batch_size=FINETUNE_BATCH_SIZE,
+            n_ctx_plus_query=FINETUNE_CTX_PLUS_QUERY,
+            n_estimators_finetune=NUM_ESTIMATORS_FINETUNE,
+            n_estimators_validation=NUM_ESTIMATORS_VALIDATION,
+            n_estimators_final=NUM_ESTIMATORS_FINAL,
             checkpoint_dir=CHECKPOINT_DIR,
             logger=logger,
         )
