@@ -1,6 +1,6 @@
 import inspect
 from pathlib import Path
-from typing import Iterable, Optional, Tuple
+from typing import Iterable, Optional, Tuple, Union
 
 import pandas as pd
 
@@ -118,6 +118,36 @@ def _build_finetune_wrapper(
         return None, False
 
 
+def _safe_target_name(name: str) -> str:
+    return name.replace(" ", "_").replace("/", "_")
+
+
+def _save_model(
+    model,
+    checkpoint_dir: Optional[Union[str, Path]],
+    target: str,
+    logger,
+) -> None:
+    """Persist a fine-tuned model if saving utilities are available."""
+    if checkpoint_dir is None:
+        return
+
+    try:
+        from tabpfn.model_loading import save_tabpfn_model
+    except Exception as exc:
+        logger.warning("Model saving unavailable: %s", exc)
+        return
+
+    checkpoint_dir = Path(checkpoint_dir)
+    checkpoint_dir.mkdir(parents=True, exist_ok=True)
+    ckpt_path = checkpoint_dir / f"tabpfn_finetune_{_safe_target_name(target)}.pt"
+    try:
+        save_tabpfn_model(model, ckpt_path)
+        logger.info("Saved fine-tuned model for %s to %s", target, ckpt_path)
+    except Exception as exc:
+        logger.warning("Could not save model for %s: %s", target, exc)
+
+
 def run_tabpfn_finetune(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
@@ -129,6 +159,7 @@ def run_tabpfn_finetune(
     finetune_epochs: int = DEFAULT_FINETUNE_EPOCHS,
     finetune_lr: float = DEFAULT_FINETUNE_LR,
     finetune_batch_size: int = DEFAULT_FINETUNE_BATCH_SIZE,
+    checkpoint_dir: Optional[Union[str, Path]] = None,
     logger=None,
 ) -> dict:
     """
@@ -178,7 +209,14 @@ def run_tabpfn_finetune(
         X_tr = X_train.loc[valid_mask].values
         y_tr = y_train.loc[valid_mask].values
 
-        model.fit(X_tr, y_tr)
+        if wrapper_model is not None:
+            output_dir = None
+            if checkpoint_dir is not None:
+                output_dir = Path(checkpoint_dir) / f"{_safe_target_name(target)}_runs"
+                output_dir.mkdir(parents=True, exist_ok=True)
+            model.fit(X_tr, y_tr, output_dir=output_dir)
+        else:
+            model.fit(X_tr, y_tr)
         if not used_wrapper:
             _try_finetune(
                 model=model,
@@ -189,6 +227,7 @@ def run_tabpfn_finetune(
                 batch_size=finetune_batch_size,
                 logger=logger,
             )
+        _save_model(model, checkpoint_dir, target, logger)
         y_pred = model.predict(X_test.values)
         predictions[target] = y_pred
 
@@ -203,6 +242,7 @@ def main():
     FINETUNE_EPOCHS = DEFAULT_FINETUNE_EPOCHS
     FINETUNE_LR = DEFAULT_FINETUNE_LR
     FINETUNE_BATCH_SIZE = DEFAULT_FINETUNE_BATCH_SIZE
+    CHECKPOINT_DIR = base_dir / "models"
 
     dataset_dir = base_dir / "data/processed/RDKit_MD_MACCs_log"
     raw_test_path = base_dir / "data/raw/expansion_data_test_blinded.csv"
@@ -223,6 +263,7 @@ def main():
             finetune_epochs=FINETUNE_EPOCHS,
             finetune_lr=FINETUNE_LR,
             finetune_batch_size=FINETUNE_BATCH_SIZE,
+            checkpoint_dir=CHECKPOINT_DIR,
             logger=logger,
         )
         pred_df_log = test_df[["SMILES", "Molecule Name"]].copy()
@@ -248,6 +289,7 @@ def main():
             finetune_epochs=FINETUNE_EPOCHS,
             finetune_lr=FINETUNE_LR,
             finetune_batch_size=FINETUNE_BATCH_SIZE,
+            checkpoint_dir=CHECKPOINT_DIR,
             logger=logger,
         )
         attach_predictions_to_raw(
