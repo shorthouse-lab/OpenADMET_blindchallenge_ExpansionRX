@@ -79,9 +79,9 @@ def main():
     # Toggle normalization of targets (assumes you built matching normalized datasets)
     NORMALIZE_TARGETS = True
 
-    dataset_dir = base_dir / "data/processed/RDKit_MD_MACCS_log"
+    dataset_dir = base_dir / "data/processed/RDKit_MD_MACCs_log"
     raw_test_path = base_dir / "data/raw/expansion_data_test_blinded.csv"
-    results_output_path = base_dir / "data/results/RDKit_MD_MACCS_log/tabpfn_zero_shot.csv"
+    results_output_path = base_dir / "data/results/RDKit_MD_MACCs_log/tabpfn_zero_shot.csv"
 
     train_df = pd.read_csv(dataset_dir / "tabpfn_train.csv")
     test_df = pd.read_csv(dataset_dir / "tabpfn_test_blinded.csv")
