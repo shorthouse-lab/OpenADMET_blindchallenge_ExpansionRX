@@ -1,6 +1,6 @@
 import inspect
 from pathlib import Path
-from typing import Iterable, Optional
+from typing import Iterable, Optional, Tuple
 
 import pandas as pd
 
@@ -75,6 +75,49 @@ def _try_finetune(
         return False
 
 
+def _build_finetune_wrapper(
+    device: str,
+    epochs: int,
+    lr: float,
+    batch_size: int,
+    logger,
+) -> Tuple[Optional[object], bool]:
+    """
+    Try to build the FinetunedTabPFNRegressor wrapper if available.
+    Returns (model, used_wrapper_flag).
+    """
+    try:
+        from tabpfn.finetuning.finetuned_regressor import FinetunedTabPFNRegressor
+    except Exception as exc:
+        logger.info("FinetunedTabPFNRegressor unavailable (%s); falling back to base model.", exc)
+        return None, False
+
+    sig = inspect.signature(FinetunedTabPFNRegressor.__init__)
+    kwargs = {}
+
+    def _maybe_add(candidates, value) -> None:
+        for candidate in candidates if isinstance(candidates, (list, tuple)) else (candidates,):
+            if candidate in sig.parameters:
+                kwargs[candidate] = value
+                return
+
+    _maybe_add("device", device)
+    _maybe_add(("epochs", "n_epochs", "num_epochs"), epochs)
+    _maybe_add(("learning_rate", "lr"), lr)
+    _maybe_add(("batch_size", "bs"), batch_size)
+
+    try:
+        model = FinetunedTabPFNRegressor(**kwargs)
+        logger.info(
+            "Using FinetunedTabPFNRegressor with args: %s",
+            {k: v for k, v in kwargs.items()},
+        )
+        return model, True
+    except Exception as exc:
+        logger.warning("Could not instantiate FinetunedTabPFNRegressor: %s", exc)
+        return None, False
+
+
 def run_tabpfn_finetune(
     train_df: pd.DataFrame,
     test_df: pd.DataFrame,
@@ -123,20 +166,29 @@ def run_tabpfn_finetune(
             logger.warning("Skipping %s; no valid labels found.", target)
             continue
 
-        model = TabPFNRegressor(device=device)
-        X_tr = X_train.loc[valid_mask].values
-        y_tr = y_train.loc[valid_mask].values
-
-        model.fit(X_tr, y_tr)
-        _try_finetune(
-            model=model,
-            X=X_tr,
-            y=y_tr,
+        wrapper_model, used_wrapper = _build_finetune_wrapper(
+            device=device,
             epochs=finetune_epochs,
             lr=finetune_lr,
             batch_size=finetune_batch_size,
             logger=logger,
         )
+
+        model = wrapper_model or TabPFNRegressor(device=device)
+        X_tr = X_train.loc[valid_mask].values
+        y_tr = y_train.loc[valid_mask].values
+
+        model.fit(X_tr, y_tr)
+        if not used_wrapper:
+            _try_finetune(
+                model=model,
+                X=X_tr,
+                y=y_tr,
+                epochs=finetune_epochs,
+                lr=finetune_lr,
+                batch_size=finetune_batch_size,
+                logger=logger,
+            )
         y_pred = model.predict(X_test.values)
         predictions[target] = y_pred
 
